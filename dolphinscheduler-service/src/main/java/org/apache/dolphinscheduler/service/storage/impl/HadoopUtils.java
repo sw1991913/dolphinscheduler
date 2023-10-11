@@ -56,6 +56,7 @@ import java.security.PrivilegedExceptionAction;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -384,7 +385,10 @@ public class HadoopUtils implements Closeable, StorageOperate {
         if (!dstPath.getParentFile().exists() && !dstPath.getParentFile().mkdirs()) {
             return false;
         }
-
+        //在使用fs前添加判断是否Kerberos过期
+        if (!UserGroupInformation.getCurrentUser().hasKerberosCredentials()) {
+            fs = getInstance().fs;
+        }
         return FileUtil.copy(fs, srcPath, dstPath, deleteSource, fs.getConf());
     }
 
@@ -413,6 +417,25 @@ public class HadoopUtils implements Closeable, StorageOperate {
     @Override
     public boolean exists(String tenantCode, String hdfsFilePath) throws IOException {
         return fs.exists(new Path(hdfsFilePath));
+    }
+
+
+    public void instanceMonitor() {
+        logger.warn("创建HadoopUtils实例监控线程...");
+        Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
+            try {
+                UserGroupInformation loginUser = UserGroupInformation.getLoginUser();
+                boolean hasKerberosCredentials = loginUser.hasKerberosCredentials();
+                logger.warn("当前进程号:"+Thread.currentThread().getId()+"\tloginUser:" + loginUser.getUserName()+"\thas:" + hasKerberosCredentials);
+                if (!hasKerberosCredentials) {
+                    synchronized (HadoopUtils.class){
+                        this.fs = getInstance().fs;
+                    }
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }, 3, 1 * 60, TimeUnit.SECONDS);
     }
 
     /**
@@ -470,8 +493,8 @@ public class HadoopUtils implements Closeable, StorageOperate {
 
         String responseContent = Boolean.TRUE
                 .equals(PropertyUtils.getBoolean(Constants.HADOOP_SECURITY_AUTHENTICATION_STARTUP_STATE, false))
-                        ? KerberosHttpClient.get(applicationUrl)
-                        : HttpUtils.get(applicationUrl);
+                ? KerberosHttpClient.get(applicationUrl)
+                : HttpUtils.get(applicationUrl);
         if (responseContent != null) {
             ObjectNode jsonObject = JSONUtils.parseObject(responseContent);
             if (!jsonObject.has("app")) {
@@ -485,8 +508,8 @@ public class HadoopUtils implements Closeable, StorageOperate {
             logger.debug("generate yarn job history application url, jobHistoryUrl={}", jobHistoryUrl);
             responseContent = Boolean.TRUE
                     .equals(PropertyUtils.getBoolean(Constants.HADOOP_SECURITY_AUTHENTICATION_STARTUP_STATE, false))
-                            ? KerberosHttpClient.get(jobHistoryUrl)
-                            : HttpUtils.get(jobHistoryUrl);
+                    ? KerberosHttpClient.get(jobHistoryUrl)
+                    : HttpUtils.get(jobHistoryUrl);
 
             if (null != responseContent) {
                 ObjectNode jsonObject = JSONUtils.parseObject(responseContent);
@@ -680,9 +703,10 @@ public class HadoopUtils implements Closeable, StorageOperate {
     private static final class YarnHAAdminUtils {
 
         /**
-         *  get active resourcemanager node
+         * get active resourcemanager node
+         *
          * @param protocol http protocol
-         * @param rmIds yarn ha ids
+         * @param rmIds    yarn ha ids
          * @return yarn active node
          */
         public static String getActiveRMName(String protocol, String rmIds) {
@@ -717,8 +741,8 @@ public class HadoopUtils implements Closeable, StorageOperate {
 
             String retStr = Boolean.TRUE
                     .equals(PropertyUtils.getBoolean(Constants.HADOOP_SECURITY_AUTHENTICATION_STARTUP_STATE, false))
-                            ? KerberosHttpClient.get(url)
-                            : HttpUtils.get(url);
+                    ? KerberosHttpClient.get(url)
+                    : HttpUtils.get(url);
 
             if (StringUtils.isEmpty(retStr)) {
                 return null;

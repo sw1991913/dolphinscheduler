@@ -51,7 +51,9 @@ public class StoreConfiguration {
             case STORAGE_S3:
                 return S3Utils.getInstance();
             case STORAGE_HDFS:
-                return HadoopUtils.getInstance();
+                HadoopUtils hadoopUtils = HadoopUtils.getInstance();
+                hadoopUtils.instanceMonitor();
+                return hadoopUtils;
             default:
                 return null;
         }
