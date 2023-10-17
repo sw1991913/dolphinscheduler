@@ -387,9 +387,12 @@ public class HadoopUtils implements Closeable, StorageOperate {
         }
 
         //在使用fs前添加判断是否Kerberos过期
-        if (!UserGroupInformation.getCurrentUser().hasKerberosCredentials()) {
-            fs = getInstance().fs;
-        }
+        try {
+            this.fs.getFileStatus(new Path("/"));
+        } catch (IOException e) {
+            logger.warn("当前进程号:" + Thread.currentThread().getId() + "\t测试获取hdfs文件信息失败,更新fs");
+            this.fs = getInstance().fs;
+        }//源码未改动 定位用
         return FileUtil.copy(fs, srcPath, dstPath, deleteSource, fs.getConf());
     }
 
@@ -425,16 +428,10 @@ public class HadoopUtils implements Closeable, StorageOperate {
         logger.warn("创建HadoopUtils实例监控线程...");
         Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
             try {
-                UserGroupInformation loginUser = UserGroupInformation.getLoginUser();
-                boolean hasKerberosCredentials = loginUser.hasKerberosCredentials();
-                logger.warn("当前进程号:"+Thread.currentThread().getId()+"\tloginUser:" + loginUser.getUserName()+"\thas:" + hasKerberosCredentials);
-                if (!hasKerberosCredentials) {
-                    synchronized (HadoopUtils.class){
-                        this.fs = getInstance().fs;
-                    }
-                }
+                this.fs.getFileStatus(new Path("/"));
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                logger.warn("当前进程号:" + Thread.currentThread().getId() + "\t测试获取hdfs文件信息失败,更新fs");
+                this.fs = getInstance().fs;
             }
         }, 3, 1 * 60, TimeUnit.SECONDS);
     }

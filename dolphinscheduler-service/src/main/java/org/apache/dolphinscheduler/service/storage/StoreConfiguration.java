@@ -42,18 +42,12 @@ public class StoreConfiguration {
     @Bean
     public StorageOperate storageOperate() {
         switch (PropertyUtils.getString(RESOURCE_STORAGE_TYPE)) {
-            case STORAGE_OSS:
-                OssOperator ossOperator = new OssOperator();
-                // TODO: change to use ossOperator.init(ossConnection) after DS supports Configuration / Connection
-                // Center
-                ossOperator.init();
-                return ossOperator;
             case STORAGE_S3:
                 return S3Utils.getInstance();
             case STORAGE_HDFS:
                 HadoopUtils hadoopUtils = HadoopUtils.getInstance();
                 hadoopUtils.instanceMonitor();
-                return HadoopUtils.getInstance();
+                return hadoopUtils;
             default:
                 return null;
         }
