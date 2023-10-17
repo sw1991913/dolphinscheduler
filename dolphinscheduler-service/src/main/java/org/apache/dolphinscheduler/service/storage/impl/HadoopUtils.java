@@ -56,6 +56,7 @@ import java.security.PrivilegedExceptionAction;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -385,6 +386,10 @@ public class HadoopUtils implements Closeable, StorageOperate {
             return false;
         }
 
+        //在使用fs前添加判断是否Kerberos过期
+        if (!UserGroupInformation.getCurrentUser().hasKerberosCredentials()) {
+            fs = getInstance().fs;
+        }
         return FileUtil.copy(fs, srcPath, dstPath, deleteSource, fs.getConf());
     }
 
@@ -413,6 +418,25 @@ public class HadoopUtils implements Closeable, StorageOperate {
     @Override
     public boolean exists(String tenantCode, String hdfsFilePath) throws IOException {
         return fs.exists(new Path(hdfsFilePath));
+    }
+
+
+    public void instanceMonitor() {
+        logger.warn("创建HadoopUtils实例监控线程...");
+        Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
+            try {
+                UserGroupInformation loginUser = UserGroupInformation.getLoginUser();
+                boolean hasKerberosCredentials = loginUser.hasKerberosCredentials();
+                logger.warn("当前进程号:"+Thread.currentThread().getId()+"\tloginUser:" + loginUser.getUserName()+"\thas:" + hasKerberosCredentials);
+                if (!hasKerberosCredentials) {
+                    synchronized (HadoopUtils.class){
+                        this.fs = getInstance().fs;
+                    }
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }, 3, 1 * 60, TimeUnit.SECONDS);
     }
 
     /**
